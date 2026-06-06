@@ -17,7 +17,6 @@
         .balance:active { transform: scale(0.95); background: rgba(255,215,0,0.2); }
         .screen { display: none; padding: 16px; }
         .screen.active { display: block; }
-        
         .game-card { background: linear-gradient(135deg, #0d0d0d 0%, #050505 100%); border-radius: 24px; padding: 20px; margin-bottom: 14px; position: relative; cursor: pointer; border: 1px solid rgba(255,215,0,0.15); }
         .game-card:active { transform: scale(0.98); }
         .game-card .title { font-size: 22px; font-weight: 800; }
@@ -118,7 +117,6 @@
     <div class="balance" onclick="showDepositModal()">⭐ <span id="balance">0</span></div>
 </header>
 
-<!-- ЭКРАНЫ -->
 <div id="screen-home" class="screen active">
     <div class="game-card" onclick="goTo('crash')"><div class="title">Ракета</div><div class="sub">Краш-игра</div><div class="art">🚀</div></div>
     <div class="game-card" onclick="goTo('mines')"><div class="title">Мины</div><div class="sub">5x5 • Найди безопасные клетки</div><div class="art">💣</div></div>
@@ -206,8 +204,8 @@
             <div id="tonBtn" class="asset-btn active" onclick="selectAsset('TON')">💎 TON<br><span style="font-size:10px;">1 TON = 100⭐</span></div>
             <div id="usdtBtn" class="asset-btn" onclick="selectAsset('USDT')">💵 USDT<br><span style="font-size:10px;">1 USDT = 50⭐</span></div>
         </div>
-        <input type="number" id="depositAmount" class="bet-input" placeholder="Сумма" style="margin-bottom:12px;">
-        <div style="background:#0a0a0a; border-radius:12px; padding:10px; margin-bottom:16px; text-align:center;">
+        <input type="number" id="depositAmount" class="bet-input" placeholder="Сумма" value="1">
+        <div style="background:#0a0a0a; border-radius:12px; padding:10px; margin:12px 0; text-align:center;">
             <span style="color:#6b6b6b;">Получишь:</span>
             <span id="previewStars" style="color:#FFD700; font-size:18px; font-weight:800;">0 ⭐</span>
         </div>
@@ -306,22 +304,28 @@
         else return `<span style="font-size:16px;font-weight:bold;">${name ? name.charAt(0).toUpperCase() : '?'}</span>`;
     }
 
-    // ==================== TON CONNECT ====================
+    // ==================== TON CONNECT (ИСПРАВЛЕННЫЙ) ====================
     
     function initTonConnect() {
-        if (tonConnectUI) return;
+        if (tonConnectUI) return true;
+        
         if (typeof TonConnectUI === 'undefined') {
-            setTimeout(initTonConnect, 500);
-            return;
+            setTimeout(initTonConnect, 1000);
+            return false;
         }
+        
         try {
-            tonConnectUI = new TonConnectUI({ manifestUrl: MANIFEST_URL });
+            tonConnectUI = new TonConnectUI({
+                manifestUrl: MANIFEST_URL
+            });
+            
             tonConnectUI.onStatusChange((wallet) => {
                 if (wallet) {
                     userWalletAddress = wallet.account.address;
                     document.getElementById('walletStatus').innerHTML = `✅ Кошелёк подключён: ${userWalletAddress.slice(0,6)}...${userWalletAddress.slice(-4)}`;
                     document.getElementById('connectWalletBtn').style.display = 'none';
                     document.getElementById('payBtn').style.display = 'block';
+                    toast('✅ Кошелёк успешно подключён!');
                 } else {
                     userWalletAddress = null;
                     document.getElementById('walletStatus').innerHTML = '';
@@ -329,36 +333,95 @@
                     document.getElementById('payBtn').style.display = 'none';
                 }
             });
-        } catch(e) { console.error(e); }
+            
+            return true;
+        } catch(e) {
+            console.error('Init error:', e);
+            return false;
+        }
     }
     
     async function connectWallet() {
         let amount = parseFloat(document.getElementById('depositAmount').value);
-        if (!amount || amount <= 0) { toast('Введите сумму'); return; }
-        if (selectedAsset === 'TON' && amount < 0.5) { toast('Минимум 0.5 TON'); return; }
-        if (selectedAsset === 'USDT' && amount < 1) { toast('Минимум 1 USDT'); return; }
-        if (!tonConnectUI) initTonConnect();
+        if (!amount || amount <= 0) {
+            toast('❌ Введите сумму пополнения!');
+            return;
+        }
+        if (selectedAsset === 'TON' && amount < 0.5) {
+            toast('❌ Минимум 0.5 TON');
+            return;
+        }
+        if (selectedAsset === 'USDT' && amount < 1) {
+            toast('❌ Минимум 1 USDT');
+            return;
+        }
+        
+        if (!tonConnectUI) {
+            const inited = initTonConnect();
+            if (!inited) {
+                toast('⏳ Загрузка кошелька, подождите...');
+                return;
+            }
+        }
+        
+        document.getElementById('connectWalletBtn').innerHTML = "⏳ Подключение...";
+        
         try {
+            if (!tonConnectUI || typeof tonConnectUI.getWallets !== 'function') {
+                toast('❌ Ошибка: кошелёк не инициализирован. Обновите страницу');
+                document.getElementById('connectWalletBtn').innerHTML = "🔗 Подключить кошелёк";
+                return;
+            }
+            
             const wallets = await tonConnectUI.getWallets();
+            if (!wallets || wallets.length === 0) {
+                toast('❌ Установите Tonkeeper или другой TON кошелёк');
+                document.getElementById('connectWalletBtn').innerHTML = "🔗 Подключить кошелёк";
+                return;
+            }
             const preferred = wallets.find(w => w.name === 'Tonkeeper') || wallets[0];
-            await tonConnectUI.connect({ bridgeUrl: preferred.bridgeUrl, universalLink: preferred.universalLink });
-        } catch(e) { toast('Ошибка: ' + e.message); }
+            await tonConnectUI.connect({
+                bridgeUrl: preferred.bridgeUrl,
+                universalLink: preferred.universalLink
+            });
+        } catch (e) {
+            console.error('Connect error:', e);
+            toast('❌ Ошибка подключения: ' + (e.message || 'неизвестная ошибка'));
+            document.getElementById('connectWalletBtn').innerHTML = "🔗 Подключить кошелёк";
+        }
     }
     
     async function sendPayment() {
-        if (!userWalletAddress) { toast('Сначала подключите кошелёк'); return; }
+        if (!userWalletAddress) {
+            toast('❌ Сначала подключите кошелёк');
+            return;
+        }
+        
         let amount = parseFloat(document.getElementById('depositAmount').value);
         const starsAmount = selectedAsset === 'TON' ? amount * 100 : amount * 50;
         const nanoAmount = Math.floor(amount * 1e9);
+        
+        const transaction = {
+            validUntil: Math.floor(Date.now() / 1000) + 600,
+            messages: [{
+                address: ADMIN_WALLET,
+                amount: nanoAmount.toString(),
+                payload: `deposit_${uid}_${Math.floor(starsAmount)}`
+            }]
+        };
+        
+        document.getElementById('payBtn').innerHTML = "⏳ Отправка...";
+        
         try {
-            await tonConnectUI.sendTransaction({
-                validUntil: Date.now() / 1000 + 600,
-                messages: [{ address: ADMIN_WALLET, amount: nanoAmount.toString(), payload: `deposit_${uid}_${starsAmount}` }]
-            });
-            toast(`✅ Транзакция отправлена! Получите ${starsAmount}⭐`);
+            const result = await tonConnectUI.sendTransaction(transaction);
+            toast(`✅ Транзакция отправлена! После подтверждения получите ${Math.floor(starsAmount)}⭐`);
             closeDepositModal();
-            setTimeout(refreshBalance, 10000);
-        } catch(e) { toast('Ошибка: ' + e.message); }
+            setTimeout(() => refreshBalance(), 10000);
+        } catch (e) {
+            console.error('Send error:', e);
+            toast('❌ Ошибка отправки: ' + (e.message || 'отмена пользователем'));
+            document.getElementById('payBtn').innerHTML = "💸 Отправить оплату";
+        }
     }
     
     function selectAsset(asset) {
@@ -380,16 +443,24 @@
         document.getElementById('depositModal').style.display = 'flex';
         selectAsset('TON');
         updatePreview();
-        initTonConnect();
-        if (userWalletAddress) {
+        
+        if (!tonConnectUI) {
+            initTonConnect();
+        } else if (userWalletAddress) {
             document.getElementById('connectWalletBtn').style.display = 'none';
             document.getElementById('payBtn').style.display = 'block';
+            document.getElementById('walletStatus').innerHTML = `✅ Кошелёк подключён: ${userWalletAddress.slice(0,6)}...${userWalletAddress.slice(-4)}`;
         }
     }
     
-    function closeDepositModal() { document.getElementById('depositModal').style.display = 'none'; }
+    function closeDepositModal() {
+        document.getElementById('depositModal').style.display = 'none';
+        document.getElementById('connectWalletBtn').innerHTML = "🔗 Подключить кошелёк";
+        document.getElementById('payBtn').innerHTML = "💸 Отправить оплату";
+    }
 
     // ==================== РАКЕТА ====================
+    
     function updateRocketPosition(multiplier) {
         const rocket = document.getElementById('rocketShip');
         if (!rocket) return;
@@ -420,12 +491,16 @@
     function changeBet(type) {
         if (hasActiveBet) { toast("Нельзя менять ставку после её создания"); return; }
         let input = document.getElementById('crashBetInput');
-        if (type === 'min') input.value = 10;
-        if (type === 'add') input.value = parseInt(input.value) + 10;
-        if (type === 'max') input.value = stars;
-        if (input.value < 10) input.value = 10;
-        if (input.value > stars) input.value = stars;
-        currentBet = parseInt(input.value);
+        let val = parseInt(input.value);
+        if (isNaN(val)) val = 10;
+        if (type === 'min') val = 10;
+        if (type === 'add') val += 10;
+        if (type === 'max') val = stars;
+        if (val < 10) val = 10;
+        if (val > stars) val = stars;
+        input.value = val;
+        currentBet = val;
+        updateUI();
     }
 
     function updateAutoSettingsLock() {
@@ -469,6 +544,7 @@
                 refreshBalance();
                 updateAutoSettingsLock();
                 updateButtonUI();
+                if (tg) tg.HapticFeedback?.impactOccurred('medium');
             } else toast(res?.error || 'Ошибка');
         });
     }
@@ -482,6 +558,7 @@
                 refreshBalance();
                 updateAutoSettingsLock();
                 updateButtonUI();
+                if (tg) tg.HapticFeedback?.impactOccurred('light');
             } else toast(res?.error || "Не удалось отменить");
         });
     }
@@ -489,6 +566,7 @@
     function cashout() {
         if (isFlying && hasActiveBet && myBet && !myBet.cashed) {
             socket.emit('rocket_cashout', { telegram_id: uid, name: pname });
+            if (tg) tg.HapticFeedback?.impactOccurred('heavy');
         }
     }
 
@@ -513,9 +591,9 @@
 
     socket.on('rocket_start', () => { isFlying = true; document.getElementById('crashMult').innerHTML = '1.00x'; document.getElementById('crashMult').className = 'rocket-multiplier flying'; resetRocketPosition(); updateButtonUI(); });
     socket.on('rocket_multiplier', (m) => { currentMultiplier = m; document.getElementById('crashMult').innerHTML = m.toFixed(2) + 'x'; updateRocketPosition(m); if (isFlying && hasActiveBet && myBet && !myBet.cashed && autoEnabled && currentMultiplier >= myBet.autoCashout - 0.005) { cashout(); } });
-    socket.on('rocket_crash', (mult) => { isFlying = false; showExplosion(); if (hasActiveBet && myBet && !myBet.cashed) { gameHistory.unshift({ game: 'Ракета', amount: -myBet.amount, time: new Date().toLocaleTimeString() }); if (gameHistory.length > 10) gameHistory.pop(); hasActiveBet = false; myBet = null; refreshBalance(); } crashHistory.unshift(mult.toFixed(2)); if (crashHistory.length > 10) crashHistory.pop(); document.getElementById('crashHistory').innerHTML = crashHistory.map(m => `<div class="history-item">${m}x</div>`).join(''); document.getElementById('crashMult').className = 'rocket-multiplier crashed'; document.getElementById('crashMult').innerHTML = 'ВЗРЫВ!'; setTimeout(() => { refreshBalance(); resetRocketPosition(); }, 500); updateAutoSettingsLock(); updateButtonUI(); });
+    socket.on('rocket_crash', (mult) => { isFlying = false; showExplosion(); if (hasActiveBet && myBet && !myBet.cashed) { gameHistory.unshift({ game: 'Ракета', amount: -myBet.amount, time: new Date().toLocaleTimeString() }); if (gameHistory.length > 10) gameHistory.pop(); hasActiveBet = false; myBet = null; refreshBalance(); if (tg) tg.HapticFeedback?.notificationOccurred('error'); } crashHistory.unshift(mult.toFixed(2)); if (crashHistory.length > 10) crashHistory.pop(); document.getElementById('crashHistory').innerHTML = crashHistory.map(m => `<div class="history-item">${m}x</div>`).join(''); document.getElementById('crashMult').className = 'rocket-multiplier crashed'; document.getElementById('crashMult').innerHTML = 'ВЗРЫВ!'; setTimeout(() => { refreshBalance(); resetRocketPosition(); }, 500); updateAutoSettingsLock(); updateButtonUI(); });
     socket.on('rocket_bet_placed', (b) => { betsList.push({ ...b, cashedAt: null }); renderBets(); refreshBalance(); });
-    socket.on('rocket_cashout_done', (d) => { if (d.name === pname) { gameHistory.unshift({ game: 'Ракета', amount: d.win, time: new Date().toLocaleTimeString() }); if (gameHistory.length > 10) gameHistory.pop(); refreshBalance(); if (myBet) myBet.cashed = true; hasActiveBet = false; myBet = null; } const bb = betsList.find(b => b.name === d.name && !b.cashedAt); if (bb) { bb.cashedAt = d.multiplier; bb.winAmount = d.win; } renderBets(); updateAutoSettingsLock(); updateButtonUI(); });
+    socket.on('rocket_cashout_done', (d) => { if (d.name === pname) { gameHistory.unshift({ game: 'Ракета', amount: d.win, time: new Date().toLocaleTimeString() }); if (gameHistory.length > 10) gameHistory.pop(); refreshBalance(); if (myBet) myBet.cashed = true; hasActiveBet = false; myBet = null; if (tg) tg.HapticFeedback?.notificationOccurred('success'); } const bb = betsList.find(b => b.name === d.name && !b.cashedAt); if (bb) { bb.cashedAt = d.multiplier; bb.winAmount = d.win; } renderBets(); updateAutoSettingsLock(); updateButtonUI(); });
     socket.on('rocket_bets_clear', () => { betsList = []; renderBets(); });
     socket.on('rocket_bet_cancelled', (data) => { betsList = betsList.filter(b => b.name !== data.name); renderBets(); });
     socket.on('rocket_history_data', (d) => { if (d && d.length) { crashHistory = d.map(item => item.multiplier.toFixed(2)); if (crashHistory.length > 10) crashHistory = crashHistory.slice(0, 10); document.getElementById('crashHistory').innerHTML = crashHistory.map(m => `<div class="history-item">${m}x</div>`).join(''); } });
@@ -553,6 +631,7 @@
                 refreshBalance();
                 renderMinesBoard(true);
                 toast(`💣 Игра началась! ${minesMinesCount} мин. Удачи!`);
+                if (tg) tg.HapticFeedback?.impactOccurred('medium');
             } else { toast(res?.error || 'Ошибка запуска игры'); }
         });
     }
@@ -573,6 +652,7 @@
                 document.getElementById('minesCash').disabled = true;
                 document.getElementById('minesCash').style.background = "#2a2a2a";
                 refreshBalance();
+                if (tg) tg.HapticFeedback?.notificationOccurred('error');
                 return;
             }
             if (res?.success) {
@@ -590,6 +670,7 @@
                     document.getElementById('minesCash').disabled = true;
                     document.getElementById('minesCash').style.background = "#2a2a2a";
                     refreshBalance();
+                    if (tg) tg.HapticFeedback?.notificationOccurred('success');
                 }
             }
         });
@@ -607,6 +688,7 @@
                 document.getElementById('minesCash').disabled = true;
                 document.getElementById('minesCash').style.background = "#2a2a2a";
                 refreshBalance();
+                if (tg) tg.HapticFeedback?.impactOccurred('light');
             } else toast(res?.error || 'Ошибка');
         });
     }
@@ -715,6 +797,7 @@
                 document.getElementById('rouletteCancelBtn').style.display = 'block';
                 toast(`Ставка ${rouletteBet}⭐ принята!`);
                 checkRouletteSpinButton();
+                if (tg) tg.HapticFeedback?.impactOccurred('medium');
             } else toast(res?.error);
         });
     }
@@ -782,6 +865,7 @@
             toast(`🏆 Победитель: ${d.winner.name}! +${d.total}⭐`);
             if (d.winner.telegram_id === uid) {
                 gameHistory.unshift({ game: 'Рулетка', amount: d.total, time: new Date().toLocaleTimeString() });
+                if (tg) tg.HapticFeedback?.notificationOccurred('success');
             }
         } else toast("Ничья");
         rouletteHasBet = false;
