@@ -248,11 +248,18 @@
     const ADMIN_WALLET = 'UQCEA1RKJ0eAZ_kvpN7tzhrCIh94XBw9ROSeQbaHPXOEOPRP';
     const MANIFEST_URL = 'https://dadton-app.vercel.app/tonconnect-manifest.json';
 
+    // Резервные bridge URL на случай блокировки
+    const BRIDGE_URLS = [
+        'https://bridge.tonapi.io/bridge',
+        'https://tonconnectbridge.mytonwallet.org/bridge',
+        'https://bridge.tonkeeper.com/bridge'
+    ];
+
     function toast(msg) {
         const t = document.getElementById('toast');
         t.innerText = msg;
         t.style.display = 'block';
-        setTimeout(() => t.style.display = 'none', 2000);
+        setTimeout(() => t.style.display = 'none', 3000);
         if (tg && msg.includes('Выигрыш')) tg.HapticFeedback?.notificationOccurred('success');
     }
 
@@ -316,10 +323,14 @@
         
         try {
             tonConnectUI = new TonConnectUI({
-                manifestUrl: MANIFEST_URL
+                manifestUrl: MANIFEST_URL,
+                actionsConfiguration: {
+                    twaReturnUrl: 'https://t.me/dadton_bot'
+                }
             });
             
             tonConnectUI.onStatusChange((wallet) => {
+                console.log('Wallet status:', wallet);
                 if (wallet) {
                     userWalletAddress = wallet.account.address;
                     document.getElementById('walletStatus').innerHTML = `✅ Кошелёк подключён: ${userWalletAddress.slice(0,6)}...${userWalletAddress.slice(-4)}`;
@@ -367,18 +378,21 @@
         document.getElementById('connectWalletBtn').innerHTML = "⏳ Подключение...";
         
         try {
-            if (!tonConnectUI || typeof tonConnectUI.getWallets !== 'function') {
-                toast('❌ Ошибка: кошелёк не инициализирован. Обновите страницу');
-                document.getElementById('connectWalletBtn').innerHTML = "🔗 Подключить кошелёк";
-                return;
+            // Пробуем получить список кошельков с резервными bridge URL
+            let wallets = null;
+            for (const bridgeUrl of BRIDGE_URLS) {
+                try {
+                    wallets = await tonConnectUI.getWallets({ bridgeUrl });
+                    if (wallets && wallets.length > 0) break;
+                } catch(e) { console.log('Bridge failed:', bridgeUrl); }
             }
             
-            const wallets = await tonConnectUI.getWallets();
             if (!wallets || wallets.length === 0) {
                 toast('❌ Установите Tonkeeper или другой TON кошелёк');
                 document.getElementById('connectWalletBtn').innerHTML = "🔗 Подключить кошелёк";
                 return;
             }
+            
             const preferred = wallets.find(w => w.name === 'Tonkeeper') || wallets[0];
             await tonConnectUI.connect({
                 bridgeUrl: preferred.bridgeUrl,
@@ -414,6 +428,7 @@
         
         try {
             const result = await tonConnectUI.sendTransaction(transaction);
+            console.log('Transaction sent:', result);
             toast(`✅ Транзакция отправлена! После подтверждения получите ${Math.floor(starsAmount)}⭐`);
             closeDepositModal();
             setTimeout(() => refreshBalance(), 10000);
