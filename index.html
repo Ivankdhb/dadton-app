@@ -114,7 +114,7 @@
 
 <header class="luxury-header">
     <div class="logo" onclick="goTo('home')">🎲 DadTon</div>
-    <div class="balance" onclick="showDepositModal()">⭐ <span id="balance">0</span></div>
+    <div class="balance" onclick="showDepositModal()">⭐ <span id="balance">1000</span></div>
 </header>
 
 <div id="screen-home" class="screen active">
@@ -197,7 +197,6 @@
 
 <div id="toast" class="toast"></div>
 
-<!-- Модальное окно пополнения -->
 <div id="depositModal" class="modal">
     <div class="modal-content">
         <h3 style="color:#FFD700; margin-bottom:16px; text-align:center;">💎 Пополнение</h3>
@@ -205,15 +204,13 @@
             <div id="tonBtn" class="asset-btn active" onclick="selectAsset('TON')">💎 TON<br><span style="font-size:10px;">1 TON = 100⭐</span></div>
             <div id="usdtBtn" class="asset-btn" onclick="selectAsset('USDT')">💵 USDT<br><span style="font-size:10px;">1 USDT = 50⭐</span></div>
         </div>
-        <input type="number" id="depositAmount" class="bet-input" placeholder="Сумма" style="margin-bottom:12px;">
-        <div style="background:#0a0a0a; border-radius:12px; padding:10px; margin-bottom:16px; text-align:center;">
+        <input type="number" id="depositAmount" class="bet-input" placeholder="Сумма" value="1">
+        <div style="background:#0a0a0a; border-radius:12px; padding:10px; margin:12px 0; text-align:center;">
             <span style="color:#6b6b6b;">Получишь:</span>
             <span id="previewStars" style="color:#FFD700; font-size:18px; font-weight:800;">0 ⭐</span>
         </div>
-        
         <div id="tonConnectBtn" class="btn" onclick="connectWallet()">🔗 Подключить TON кошелёк</div>
         <div id="payBtn" class="btn" style="display:none; margin-top:8px;" onclick="sendPayment()">💸 Отправить оплату</div>
-        
         <div class="btn btn-cancel" onclick="closeDepositModal()">Отмена</div>
         <div id="walletStatus" style="margin-top:12px; font-size:11px; color:#6b6b6b; text-align:center;"></div>
     </div>
@@ -229,7 +226,7 @@
     let userAvatarUrl = user?.photo_url || '';
     let userUsername = user?.username || '';
 
-    let stars = 0, turnover = 0, games = 0, wins = 0;
+    let stars = 1000, turnover = 0, games = 0, wins = 0;
     let referralCount = 0, referralEarned = 0;
     let gameHistory = [];
 
@@ -328,7 +325,7 @@
                     document.getElementById('walletStatus').innerHTML = `✅ Кошелёк подключён: ${userWalletAddress.slice(0,6)}...${userWalletAddress.slice(-4)}`;
                     document.getElementById('tonConnectBtn').style.display = 'none';
                     document.getElementById('payBtn').style.display = 'block';
-                    toast('✅ Кошелёк успешно подключён! Теперь нажмите "Отправить оплату"');
+                    toast('✅ Кошелёк успешно подключён!');
                 } else {
                     userWalletAddress = null;
                     document.getElementById('walletStatus').innerHTML = '';
@@ -346,7 +343,6 @@
     }
     
     async function connectWallet() {
-        // Проверяем сумму
         let amount = parseFloat(document.getElementById('depositAmount').value);
         if (!amount || amount <= 0) {
             toast('❌ Введите сумму пополнения!');
@@ -394,11 +390,6 @@
         }
         
         let amount = parseFloat(document.getElementById('depositAmount').value);
-        if (!amount || amount <= 0) {
-            toast('❌ Введите сумму');
-            return;
-        }
-        
         const starsAmount = selectedAsset === 'TON' ? amount * 100 : amount * 50;
         const nanoAmount = Math.floor(amount * 1e9);
         
@@ -445,16 +436,11 @@
         document.getElementById('depositModal').style.display = 'flex';
         selectAsset('TON');
         updatePreview();
-        if (tonConnectUI) {
-            // Если уже был инициализирован, восстанавливаем UI
-            if (userWalletAddress) {
-                document.getElementById('tonConnectBtn').style.display = 'none';
-                document.getElementById('payBtn').style.display = 'block';
-                document.getElementById('walletStatus').innerHTML = `✅ Кошелёк подключён: ${userWalletAddress.slice(0,6)}...${userWalletAddress.slice(-4)}`;
-            } else {
-                document.getElementById('tonConnectBtn').style.display = 'block';
-                document.getElementById('payBtn').style.display = 'none';
-            }
+        initTonConnect();
+        if (tonConnectUI && userWalletAddress) {
+            document.getElementById('tonConnectBtn').style.display = 'none';
+            document.getElementById('payBtn').style.display = 'block';
+            document.getElementById('walletStatus').innerHTML = `✅ Кошелёк подключён: ${userWalletAddress.slice(0,6)}...${userWalletAddress.slice(-4)}`;
         } else {
             document.getElementById('tonConnectBtn').style.display = 'block';
             document.getElementById('payBtn').style.display = 'none';
@@ -467,8 +453,29 @@
         document.getElementById('payBtn').innerHTML = "💸 Отправить оплату";
     }
 
-    // ==================== ОСТАЛЬНЫЕ ИГРЫ (мины, рулетка, ракета) ====================
-    // Код игр такой же как у тебя, я его сохранил
+    // ==================== НАВИГАЦИЯ ====================
+    
+    function tab(name, el) {
+        document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+        el.classList.add('active');
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        document.getElementById(`screen-${name}`).classList.add('active');
+        if (name === 'leaders') socket.emit('get_leaderboard');
+        if (name === 'roulette') startRouletteAutoSpin();
+        if (name !== 'roulette') stopRouletteAutoSpin();
+    }
+
+    function goTo(game) {
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        document.getElementById(`screen-${game}`).classList.add('active');
+        if (game === 'mines') renderMinesBoard(false);
+        if (game === 'roulette') startRouletteAutoSpin();
+        if (game === 'crash') { updateButtonUI(); updateAutoSettingsLock(); resetRocketPosition(); }
+        if (game !== 'roulette') stopRouletteAutoSpin();
+    }
+
+    // ==================== РАКЕТА ====================
+    
     function updateRocketPosition(multiplier) {
         const rocket = document.getElementById('rocketShip');
         if (!rocket) return;
@@ -807,7 +814,7 @@
         const cont = document.getElementById('leaderboardList');
         if (!data || !data.length) { cont.innerHTML = '<div class="empty">🏆 Таблица лидеров пуста</div>'; renderPodium([]); return; }
         renderPodium(data);
-        cont.innerHTML = data.slice(3, 50).map((u, i) => { const avatarHtml = getAvatarHtml(u.avatar, u.name); return `<div class="leader-item"><div style="display: flex; align-items: center; gap: 10px;"><span style="font-weight:800; width:30px;">#${i + 4}</span><div style="width:30px; height:30px; border-radius:50%; background:linear-gradient(135deg,#1a1a1a,#0a0a0a); border:1px solid #FFD700; display:flex; align-items:center; justify-content:center; overflow:hidden;">${avatarHtml}</div><span style="font-size:13px;">${u.name}</span></div><span style="color:#FFD700; font-size:13px;">⭐ ${u.turnover}</span></div>`; }).join('');
+        cont.innerHTML = data.slice(3, 50).map((u, i) => { const avatarHtml = getAvatarHtml(u.avatar, u.name); return `<div class="leader-item"><div style="display: flex; align-items: center; gap: 10px;"><span style="font-weight:800; width:30px;">#${i + 4}</span><div style="width:30px; height:30px; border-radius:50%; background:linear-gradient(135deg,#1a1a1a,#0a0a0a); border:1px solid #FFD700; display:flex; align-items:center; justify-content:center; overflow:hidden;">${avatarHtml}</div><span style="font-size:13px;">${u.name}</span></div><span style="color:#FFD700; font-size:13px;">⭐ ${u.turnover}</span></div>`); }).join('');
         if (data.length <= 3) cont.innerHTML = '<div class="empty">Нет других игроков</div>';
     });
 
@@ -825,25 +832,6 @@
             const refLink = `https://t.me/dadton_bot?start=ref_${uid.slice(-6)}`;
             container.innerHTML = `<div style="display: flex; gap: 10px; margin-bottom: 16px;"><div class="stat-card" style="flex:1;"><div style="font-size:10px; color:#6b6b6b;">👥 Рефералы</div><div style="font-size:20px; font-weight:800;" id="refCount">${referralCount}</div></div><div class="stat-card" style="flex:1;"><div style="font-size:10px; color:#6b6b6b;">💰 Заработано</div><div style="font-size:20px; font-weight:800;" id="refEarned">${referralEarned}</div></div></div><div class="ref-box"><span style="font-size:11px; word-break:break-all;">${refLink}</span><div class="btn" style="margin-top:10px; padding:8px;" onclick="navigator.clipboard.writeText('${refLink}'); toast('Ссылка скопирована!')">Копировать</div></div><div class="empty" style="margin-top:10px; font-size:11px;">💡 За каждого приглашённого друга вы получаете 10% от его оборота!</div>`;
         }
-    }
-
-    function tab(name, el) {
-        document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
-        el.classList.add('active');
-        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-        document.getElementById(`screen-${name}`).classList.add('active');
-        if (name === 'leaders') socket.emit('get_leaderboard');
-        if (name === 'roulette') startRouletteAutoSpin();
-        if (name !== 'roulette') stopRouletteAutoSpin();
-    }
-
-    function goTo(game) {
-        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-        document.getElementById(`screen-${game}`).classList.add('active');
-        if (game === 'mines') renderMinesBoard(false);
-        if (game === 'roulette') startRouletteAutoSpin();
-        if (game === 'crash') { updateButtonUI(); updateAutoSettingsLock(); resetRocketPosition(); }
-        if (game !== 'roulette') stopRouletteAutoSpin();
     }
 
     loadReferralStats();
